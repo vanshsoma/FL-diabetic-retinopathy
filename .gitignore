@@ -1,1 +1,14 @@
-venv
+# Python virtual environment
+server/venv/
+
+# Datasets
+data_zips/
+data_unzipped/
+
+# Logs
+logs/
+
+# IDE / OS files
+__pycache__/
+.vscode/
+.DS_Store
