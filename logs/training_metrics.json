@@ -1,0 +1,106 @@
+{
+    "rounds": [
+        {
+            "round": 1,
+            "global_accuracy": 0.82,
+            "client_metrics": {
+                "18fe2da868154ad29943fe7faea7b238": {
+                    "accuracy": 0.8335394365974019,
+                    "loss": 0.10612437502231387
+                }
+            }
+        },
+        {
+            "round": 2,
+            "global_accuracy": 0.82,
+            "client_metrics": {
+                "18fe2da868154ad29943fe7faea7b238": {
+                    "accuracy": 0.8427204259925656,
+                    "loss": 0.543662401381056
+                }
+            }
+        },
+        {
+            "round": 3,
+            "global_accuracy": 0.82,
+            "client_metrics": {
+                "18fe2da868154ad29943fe7faea7b238": {
+                    "accuracy": 0.8162472352447986,
+                    "loss": 0.01126285555231532
+                }
+            }
+        },
+        {
+            "round": 4,
+            "global_accuracy": 0.82,
+            "client_metrics": {
+                "18fe2da868154ad29943fe7faea7b238": {
+                    "accuracy": 0.8140778380945756,
+                    "loss": 0.3940446006123236
+                }
+            }
+        },
+        {
+            "round": 5,
+            "global_accuracy": 0.82,
+            "client_metrics": {
+                "18fe2da868154ad29943fe7faea7b238": {
+                    "accuracy": 0.7691441777077311,
+                    "loss": 0.16330308976068153
+                }
+            }
+        },
+        {
+            "round": 6,
+            "global_accuracy": 0.82,
+            "client_metrics": {
+                "18fe2da868154ad29943fe7faea7b238": {
+                    "accuracy": 0.7712249068768282,
+                    "loss": 0.9101693788637507
+                }
+            }
+        },
+        {
+            "round": 7,
+            "global_accuracy": 0.82,
+            "client_metrics": {
+                "18fe2da868154ad29943fe7faea7b238": {
+                    "accuracy": 0.8252614770293689,
+                    "loss": 0.4182855534605715
+                }
+            }
+        },
+        {
+            "round": 8,
+            "global_accuracy": 0.82,
+            "client_metrics": {
+                "18fe2da868154ad29943fe7faea7b238": {
+                    "accuracy": 0.8211331621934851,
+                    "loss": 0.5331682593608987
+                }
+            }
+        },
+        {
+            "round": 9,
+            "global_accuracy": 0.82,
+            "client_metrics": {
+                "18fe2da868154ad29943fe7faea7b238": {
+                    "accuracy": 0.7700114428353505,
+                    "loss": 0.3565253330503374
+                }
+            }
+        },
+        {
+            "round": 10,
+            "global_accuracy": 0.82,
+            "client_metrics": {
+                "18fe2da868154ad29943fe7faea7b238": {
+                    "accuracy": 0.8196547069880613,
+                    "loss": 0.5078174008523361
+                }
+            }
+        }
+    ],
+    "connected_clients": 0,
+    "status": "Training complete."
+}
