@@ -5,7 +5,7 @@ import sys
 import os
 import zipfile 
 import pandas as pd
-from sklearn.model_selection import train_test_split # <-- Added for data split
+from sklearn.model_selection import train_test_split 
 
 # --- CONFIGURATION CONSTANTS ---
 NUM_CLASSES = 5
@@ -13,14 +13,12 @@ IMAGE_SHAPE = (224, 224)
 BATCH_SIZE = 32
 
 # ----------------------------------------------------------------------
-# 1. ACTUAL DATA LOADING FUNCTION (Handles Custom Label File Search)
+# 1. ACTUAL DATA LOADING FUNCTION (Handles Unzipping and Custom Load)
 # ----------------------------------------------------------------------
 
 def unzip_data(client_id):
     """
     Unzips the hospital data file into a local directory if not already unzipped.
-    
-    Returns the path to the unzipped directory.
     """
     ZIP_FILE_NAME = f"hospital_{client_id}_data.zip"
     ZIP_PATH = os.path.join(os.getcwd(), "data_zips", ZIP_FILE_NAME) 
@@ -47,20 +45,17 @@ def unzip_data(client_id):
         raise Exception(f"Failed to unzip {ZIP_FILE_NAME}: {e}")
 
 
-# In test_client.py, replace the existing load_data function
-
 def load_data(client_id):
     """
     Loads data by reading the Excel/CSV file for labels and matching them to image files.
     """
     HOSPITAL_DIR = unzip_data(client_id)
     
-    # Adjust path to the actual root inside the extracted folder
     data_root = os.path.join(HOSPITAL_DIR, f"hospital_{client_id}_data")
     if not os.path.isdir(data_root):
         data_root = HOSPITAL_DIR 
 
-    # --- Step 1: Search for the Label File (Labels were found, so this part works) ---
+    # --- Step 1: Search for the Label File ---
     LABEL_BASE_NAME = "labels"
     LABEL_FILE = None
     
@@ -71,11 +66,11 @@ def load_data(client_id):
             break
             
     if not LABEL_FILE:
-        raise FileNotFoundError(f"Label file not found.")
+        raise FileNotFoundError(f"Label file not found. Searched in {data_root}")
         
     IMAGE_DIR = os.path.join(data_root, "images")
 
-    # --- Step 2: Read Labels from Excel/CSV (Labels reading works) ---
+    # --- Step 2: Read Labels from Excel/CSV ---
     print(f"[Client {client_id}] Reading labels from {LABEL_FILE}")
     try:
         if LABEL_FILE.endswith('.xlsx'):
@@ -89,56 +84,44 @@ def load_data(client_id):
     except Exception as e:
         raise Exception(f"Failed to read label file: {LABEL_FILE}. Error: {e}")
 
-    # --- Step 3: Load and Preprocess Images (The FIX is here!) ---
+    # --- Step 3: Load and Preprocess Images ---
     X_data = []
     y_labels = []
     
     print(f"[Client {client_id}] Starting image loading from {IMAGE_DIR}...")
     
-    # Define possible image extensions to check
     POSSIBLE_EXTENSIONS = ['.jpg', '.jpeg', '.png'] 
 
     for index, row in labels_df.iterrows():
-        # Clean the image name from the dataframe (remove any trailing extensions)
         base_name = str(row['image_name']).replace('.jpg', '').replace('.jpeg', '').strip()
-        img_level = int(row['level']) # Ensure level is integer
-
+        img_level = int(row['level']) 
         image_loaded = False
         
-        # Check all possible extensions
         for ext in POSSIBLE_EXTENSIONS:
             img_name = base_name + ext
             img_path = os.path.join(IMAGE_DIR, img_name)
 
             if os.path.exists(img_path):
                 try:
-                    # Load image, resize it, and convert to numpy array
                     img = tf.keras.utils.load_img(img_path, target_size=IMAGE_SHAPE)
                     img_array = tf.keras.utils.img_to_array(img)
                     
                     X_data.append(img_array)
                     y_labels.append(img_level)
                     image_loaded = True
-                    break # Stop checking extensions once image is found
+                    break 
                 except Exception as e:
                     print(f"Skipping image {img_name} due to loading error: {e}")
-                    image_loaded = True # Treat as loaded to exit extension loop
+                    image_loaded = True 
                     break
         
-        # if not image_loaded:
-        #    print(f"Warning: Could not find image file for name: {base_name}")
-        
     if not X_data:
-        # This is the error we are fixing!
-        raise Exception("No valid images were loaded. Please check that image files exist in the 'images' folder.")
+        raise Exception("No valid images were loaded. Check file paths and extensions.")
     
-    # Convert lists to NumPy arrays
     X_data = np.array(X_data, dtype="float32")
     y_labels_int = np.array(y_labels, dtype="int")
 
-    # --- Step 4: Split Data and Final Preprocessing (Remains the same) ---
-    from sklearn.model_selection import train_test_split
-    
+    # --- Step 4: Split Data and Final Preprocessing ---
     X_train, X_test, y_train_int, y_test_int = train_test_split(
         X_data, y_labels_int, test_size=0.2, random_state=42, stratify=y_labels_int
     )
@@ -154,11 +137,9 @@ def load_data(client_id):
     
     return X_train, y_train, X_test, y_test
 
-# (The rest of the file, including MobileNetV2 definition and Flower client class, remains the same)
 # ----------------------------------------------------------------------
 # 2. MOBILELNETV2 MODEL DEFINITION (MUST match server)
 # ----------------------------------------------------------------------
-# ... (Model Definition and Flower Class are UNCHANGED)
 try:
     base_model = tf.keras.applications.MobileNetV2(
         input_shape=IMAGE_SHAPE + (3,), 
@@ -204,7 +185,11 @@ class RealHospitalClient(fl.client.NumPyClient):
         self.set_parameters(parameters)
         
         history = self.model.fit(
-            self.x_train, self.y_train, epochs=1, batch_size=BATCH_SIZE, verbose=0)
+            self.x_train, self.y_train, 
+            epochs=1, # <-- Back to 1 epoch for speed
+            batch_size=BATCH_SIZE, 
+            verbose=0
+        )
         
         updated_parameters = self.model.get_weights()
         num_examples = len(self.x_train)
@@ -224,12 +209,14 @@ class RealHospitalClient(fl.client.NumPyClient):
         
         loss, accuracy = self.model.evaluate(self.x_test, self.y_test, verbose=0)
         
-        print(f"[Client {self.cid}] Evaluation complete. Global Accuracy: {accuracy:.4f}")
+        metrics_dict = {"accuracy": accuracy, "loss": loss}
         
-        return loss, len(self.x_test), {"accuracy": accuracy}
+        print(f"[Client {self.cid}] Evaluation complete. Loss: {loss:.4f}, Accuracy: {accuracy:.4f}")
+        
+        return loss, len(self.x_test), metrics_dict
 
 # ----------------------------------------------------------------------
-# 4. CLIENT EXECUTION (Handles CID 1 and CID 2)
+# 4. CLIENT EXECUTION (Handles CID 1 and 2)
 # ----------------------------------------------------------------------
 
 if __name__ == "__main__":
