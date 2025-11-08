@@ -220,34 +220,47 @@ class RealHospitalClient(fl.client.NumPyClient):
 # ----------------------------------------------------------------------
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
+    # --- Step 1: Get Client ID from command-line ---
+    if len(sys.argv) >= 2:
         CLIENT_ID = int(sys.argv[1])
-        if CLIENT_ID not in [1, 2]:
-             print(f"Error: Client ID must be 1 or 2. Received {CLIENT_ID}")
-             sys.exit(1)
     else:
-        CLIENT_ID = 1 
+        CLIENT_ID = 1  # default to Hospital 1
 
+    # --- Step 2: Get Server IP from command-line ---
+    if len(sys.argv) >= 3:
+        SERVER_IP = sys.argv[2]
+    else:
+        SERVER_IP = "localhost"
+
+    # --- Step 3: Restrict to Hospitals 1 & 2 only ---
+    if CLIENT_ID not in [1, 2]:
+        print(f"[ERROR] Invalid Client ID {CLIENT_ID}. This setup supports only Hospital 1 and 2.")
+        sys.exit(1)
+
+    # --- Step 4: Load local data for that hospital ---
     try:
         X_train, y_train, X_test, y_test = load_data(CLIENT_ID)
     except FileNotFoundError as e:
         print(f"FATAL ERROR: {e}")
-        print("Please ensure your data zip files are correctly placed and structured.")
         sys.exit(1)
     except Exception as e:
         print(f"FATAL ERROR during data loading/unzipping: {e}")
         sys.exit(1)
 
+    # --- Step 5: Create client instance ---
     client_instance = RealHospitalClient(model, X_train, y_train, X_test, y_test, CLIENT_ID)
 
-    print(f"Starting MobileNetV2 client ID {CLIENT_ID}...")
+    print(f"Starting MobileNetV2 Client ID {CLIENT_ID}...")
+    print(f"Connecting to Server at {SERVER_IP}:8080 ...")
+
+    # --- Step 6: Connect to Federated Server ---
     try:
         fl.client.start_client(
-            server_address="localhost:8080",
-            client=client_instance.to_client() 
+            server_address=f"{SERVER_IP}:8080",
+            client=client_instance.to_client()
         )
     except Exception as e:
         if "Connection refused" in str(e):
-            print(f"Client connection error: Server not available on localhost:8080. Is start-demo.bat running?")
+            print(f"[Client {CLIENT_ID}] ERROR: Server not available at {SERVER_IP}:8080. Is it running?")
         else:
-            print(f"Client connection error: {e}")
+            print(f"[Client {CLIENT_ID}] Connection error: {e}")

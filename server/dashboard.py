@@ -4,27 +4,28 @@ import os
 import pandas as pd
 from streamlit_autorefresh import st_autorefresh
 
+# --- New Imports for Prediction ---
+import tensorflow as tf
+import numpy as np
+from PIL import Image
+import io
+
 # --- Configuration ---
 LOGS_PATH = "logs/training_metrics.json"   # <-- This path is correct
 MODEL_PATH = "models/global_model.h5"     # <-- This path is correct
 REFRESH_INTERVAL = 2000  # 2 seconds in milliseconds
-CLIENTS_REQUIRED = 4     # Make sure this matches your flower_server.py (set to 1 for test)
+CLIENTS_REQUIRED = 2     # <-- Set to 2 as requested
 
-# Hospital names (must match the client_cid)
-# This is now a "lookup" map
-HOSPITAL_NAMES = {
-    "hospital_1": "City General Hospital",
-    "hospital_2": "Suburban Medical Center",
-    "hospital_3": "Rural District Hospital",
-    "hospital_4": "University Medical Research"
-}
+# --- IMPORTANT: Model & Data Configuration ---
+# You MUST change these to match your model's training!
+IMAGE_WIDTH = 224
+IMAGE_HEIGHT = 224
+CLASS_NAMES = ["No Diabetic Retinopathy", "Diabetic Retinopathy Present"]
+
 
 # --- Data Loading Functions ---
 
-# --- THIS IS THE FIX ---
-# We comment out the cache decorator. This forces Streamlit
-# to re-read the file every 2 seconds, solving the race condition.
-# @st.cache_data(show_spinner=False)
+# We don't cache load_data() to force a re-read on every refresh
 def load_data():
     """Load the latest metrics from the JSON log file."""
     default_data = {"rounds": [], "connected_clients": 0, "status": "Initializing..."}
@@ -39,8 +40,8 @@ def load_data():
         return default_data
 
 @st.cache_data(show_spinner=False)
-def load_model():
-    """Load the model file for downloading."""
+def load_model_bytes():
+    """Load the model file bytes for downloading."""
     if os.path.exists(MODEL_PATH):
         try:
             with open(MODEL_PATH, 'rb') as f:
@@ -50,13 +51,75 @@ def load_model():
             return None
     return None
 
+# --- NEW: Functions for Prediction ---
+
+@st.cache_resource(show_spinner="Loading global model for prediction...")
+def load_keras_model():
+    """Load the Keras model into memory for actual prediction."""
+    if os.path.exists(MODEL_PATH):
+        try:
+            # Load the model using TensorFlow/Keras
+            model = tf.keras.models.load_model(MODEL_PATH)
+            return model
+        except Exception as e:
+            st.error(f"Error loading Keras model: {e}")
+            return None
+    return None
+
+def preprocess_image(image_bytes):
+    """
+    Preprocess the uploaded image to match the model's input requirements.
+    """
+    try:
+        # Open the image
+        image = Image.open(io.BytesIO(image_bytes))
+        
+        # Convert to RGB (if it's RGBA, for example)
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+            
+        # <-- IMPORTANT! Resize to your model's expected input size
+        image = image.resize((IMAGE_WIDTH, IMAGE_HEIGHT))
+        
+        # Convert to numpy array
+        image_array = np.array(image)
+        
+        # <-- IMPORTANT! Normalize pixels (e.g., / 255.0)
+        # Change this if your model expects a different normalization
+        image_array = image_array / 255.0
+        
+        # Expand dimensions to create a "batch" of 1
+        # Shape changes from (width, height, channels) to (1, width, height, channels)
+        image_batch = np.expand_dims(image_array, axis=0)
+        
+        return image_batch
+    except Exception as e:
+        st.error(f"Error preprocessing image: {e}")
+        return None
+
+def decode_prediction(prediction, class_names):
+    """Convert the model's raw output into a human-readable class name."""
+    # Example for binary or multi-class classification
+    predicted_index = np.argmax(prediction[0])
+    confidence = prediction[0][predicted_index] * 100
+    
+    # <-- IMPORTANT! Adjust this logic if your model output is different
+    # (e.g., if it's binary sigmoid output, prediction[0][0] > 0.5)
+    
+    if predicted_index < len(class_names):
+        return class_names[predicted_index], confidence
+    else:
+        return "Unknown", 0.0
+
 # --- Main Dashboard ---
 st.set_page_config(layout="wide", page_title="Federated DR Screening")
 st_autorefresh(interval=REFRESH_INTERVAL, key="data_refresher")
 
-# Load data
+# Load data and models
 data = load_data()
-model_data = load_model()
+model_bytes_for_download = load_model_bytes() # For the download button
+model_for_prediction = load_keras_model()     # For the prediction feature
+
 status = data.get("status", "Waiting...")
 rounds = data.get("rounds", [])
 last_round = rounds[-1] if rounds else None
@@ -77,86 +140,116 @@ with col_metric:
 
 st.divider()
 
-# --- Main Content Columns ---
-col_hospitals, col_chart = st.columns([1, 1])
+# --- Main Content ---
 
-# --- Column 1: Hospital Status ---
-with col_hospitals:
-    st.header("Hospital Status")
+# Calculate connected clients
+if "Waiting" in status:
+    try:
+        connected_clients = CLIENTS_REQUIRED - int(status.split(" ")[1])
+    except: connected_clients = 0
+elif "Round" in status or "complete" in status:
+    connected_clients = CLIENTS_REQUIRED
+else:
+    connected_clients = 0
+
+# --- Create Columns for Dashboard (SWAPPED) ---
+col_info, col_chart = st.columns([1, 2])  # <-- Swapped order and ratio
+
+with col_info:
+    st.header("Session Info")
     
-    # Get client metrics from the *last* completed round
-    client_metrics_dict = last_round.get("client_metrics", {}) if last_round else {}
-    
-    # Dynamically find which clients are active from the log
-    active_client_ids = list(client_metrics_dict.keys())
-    
-    # Determine connected clients for the "Info" box
-    if "Waiting" in status:
-        try:
-            connected_clients = CLIENTS_REQUIRED - int(status.split(" ")[1])
-        except: connected_clients = 0
-    elif "Round" in status or "complete" in status:
-        connected_clients = CLIENTS_REQUIRED
+    with st.container(border=True):
+        st.metric(
+            label="Connected Hospitals",
+            value=f"{connected_clients} / {CLIENTS_REQUIRED}"
+        )
+        st.markdown(
+            "🔒 **Privacy:** Only model weights are shared. "
+            "No patient data ever leaves the hospital."
+        )
+
+    # Place download button outside the container but still in the column
+    if model_bytes_for_download:
+        st.download_button(
+            "Download Latest Global Model (.h5)", 
+            model_bytes_for_download, 
+            "global_model.h5",
+            use_container_width=True
+        )
     else:
-        connected_clients = 0
+        st.download_button(
+            "Download Latest Global Model (.h5)", 
+            b'', 
+            "global_model.h5", 
+            disabled=True,
+            use_container_width=True
+        )
 
-    cols = st.columns(2)
-    
-    # Create a unified list of all clients to display
-    all_client_keys = list(HOSPITAL_NAMES.keys())
-    # Add any unknown clients (like our test client)
-    for cid in active_client_ids:
-        if cid not in all_client_keys:
-            all_client_keys.append(cid)
-
-    if not all_client_keys:
-        st.info("Waiting for clients to connect...")
-
-    for i, client_id in enumerate(all_client_keys):
-        if i >= 4: break # Limit to 4 cards for this demo
-        
-        card_col = cols[i % 2]
-        
-        # Get the friendly name, or use the ID as a fallback
-        name = HOSPITAL_NAMES.get(client_id, f"Client ({client_id[:6]}...)")
-        metrics = client_metrics_dict.get(client_id)
-        
-        with card_col:
-            if metrics:
-                # Client is active and sent data
-                st.success(f"**{name}** (Active)")
-                c1, c2 = st.columns(2)
-                c1.metric("Local Loss", f"{metrics.get('loss', 0):.3f}")
-                c2.metric("Local Accuracy", f"{metrics.get('accuracy', 0) * 100:.1f}%")
-            else:
-                # Client is known but offline
-                st.error(f"**{name}** (Offline)")
-                c1, c2 = st.columns(2)
-                c1.metric("Local Loss", "---")
-                c2.metric("Local Accuracy", "---")
-
-# --- Column 2: Chart and Info ---
 with col_chart:
     st.header("Global Model Performance")
-    
     if not rounds:
         st.info("Waiting for the first round to complete...")
     else:
         df = pd.DataFrame(rounds)
         df = df.rename(columns={"round": "Round", "global_accuracy": "Global Accuracy"})
         df["Global Accuracy"] = df["Global Accuracy"] * 100
-        st.line_chart(df.set_index("Round")["Global Accuracy"], height=300)
-    
-    st.subheader("Info")
-    st.markdown(f"""
-    - **Connected Hospitals:** {connected_clients} / {CLIENTS_REQUIRED}
-    - **Privacy:** 🔒 Only model weights are shared. No patient data ever leaves the hospital.
-    """)
-    
-    if model_data:
-        st.download_button("Download Latest Global Model (.h5)", model_data, "global_model.h5")
-    else:
-        st.download_button("Download Latest Global Model (.h5)", b'', "global_model.h5", disabled=True)
+        st.line_chart(df.set_index("Round")["Global Accuracy"], height=350)
 
+# --- Raw Log (Full Width) ---
 with st.expander("Show Raw JSON Log"):
     st.json(data)
+
+st.divider()
+
+# --- =============== NEW PREDICTION SECTION =============== ---
+
+st.header("🔬 Predict on a New Scan")
+
+if model_for_prediction is None:
+    st.warning("Model is not yet available for prediction. Please wait for the first training round to complete.", icon="⏳")
+else:
+    # Use columns for a cleaner layout
+    col_upload, col_result = st.columns(2)
+    
+    with col_upload:
+        uploaded_file = st.file_uploader(
+            "Upload a retinal scan (JPG, PNG)", 
+            type=["jpg", "jpeg", "png"]
+        )
+
+    if uploaded_file is not None:
+        # Read the file bytes
+        image_bytes = uploaded_file.getvalue()
+        
+        # Display the uploaded image
+        with col_upload:
+            st.image(image_bytes, caption="Uploaded Scan", use_column_width=True)
+        
+        with col_result:
+            with st.spinner("Analyzing scan..."):
+                # Preprocess the image
+                processed_batch = preprocess_image(image_bytes)
+                
+                if processed_batch is not None:
+                    # Run prediction
+                    try:
+                        prediction = model_for_prediction.predict(processed_batch)
+                        
+                        # Decode the prediction
+                        class_name, confidence = decode_prediction(prediction, CLASS_NAMES)
+                        
+                        # Display the result
+                        st.subheader("Analysis Result")
+                        if "Present" in class_name:
+                             st.error(f"**Prediction:** {class_name}", icon="⚠️")
+                        else:
+                             st.success(f"**Prediction:** {class_name}", icon="✅")
+                        
+                        st.metric(label="Confidence", value=f"{confidence:.2f}%")
+                        
+                        # Optional: Show raw prediction output
+                        with st.expander("Show Raw Prediction Output"):
+                            st.write(prediction)
+
+                    except Exception as e:
+                        st.error(f"Error during prediction: {e}")
