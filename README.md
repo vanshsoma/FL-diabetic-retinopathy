@@ -2,7 +2,8 @@
 
 This project demonstrates a privacy-preserving deep learning framework to screen for Diabetic Retinopathy (DR) using Federated Learning (FL). It uses the Flower framework to train a MobileNetV2 model on partitioned data from multiple "hospitals" without the patient data ever leaving the local client.
 
-![Dashboard Screenshot](https.i.imgur.com/e1Z11sE.png) 
+![Dashboard Screenshot]<img width="1908" height="837" alt="Screenshot 2025-11-08 102132" src="https://github.com/user-attachments/assets/332736d9-03e8-46b2-a2d8-211da441bd90" />
+ 
 *(Note: This image shows a final 10-round run. Your current setup runs for 6 rounds).*
 
 ## 1. 🎯 The Problem: The AI-Privacy Paradox
